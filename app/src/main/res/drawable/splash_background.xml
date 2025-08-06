@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Black background -->
+    <item android:drawable="@android:color/black" />
+
+    <!-- Centered logo with bigger sizing -->
+    <item android:gravity="center">
+        <bitmap
+            android:src="@drawable/wishon_logo"
+            android:gravity="center"
+            android:width="240dp"
+            android:height="240dp" />
+    </item>
+
+    <!-- App name text positioned below logo -->
+    <item android:gravity="center_horizontal|bottom"
+        android:bottom="200dp">
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/transparent" />
+        </shape>
+    </item>
+</layer-list>

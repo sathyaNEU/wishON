@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Splash Screen Theme - Shows immediately when app launches -->
+    <style name="SplashTheme" parent="Theme.VoiceFirstApp">
+        <!-- Static splash background that appears instantly -->
+        <item name="android:windowBackground">@drawable/splash_background</item>
+        <!-- Remove title bar -->
+        <item name="android:windowNoTitle">true</item>
+        <!-- Full screen -->
+        <item name="android:windowFullscreen">true</item>
+        <!-- Hide status bar immediately -->
+        <item name="android:windowTranslucentStatus">true</item>
+        <!-- Disable window animations for instant appearance -->
+        <item name="android:windowDisablePreview">false</item>
+        <!-- Set window background to prevent white flash -->
+        <item name="android:windowShowWallpaper">false</item>
+        <!-- Prevent window from being resized -->
+        <item name="android:windowSoftInputMode">stateHidden|adjustPan</item>
+    </style>
+</resources>

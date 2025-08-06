@@ -1,4 +1,4 @@
-package com.example.voicefirstapp
+package com.example.wishon
 
 import android.Manifest
 import android.content.Intent
@@ -22,8 +22,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import com.example.voicefirstapp.ui.theme.VoiceFirstAppTheme
-import com.example.voicefirstapp.utils.GemmaLLMService
+import com.example.wishon.ui.theme.VoiceFirstAppTheme
+import com.example.wishon.utils.GemmaLLMService
 import kotlinx.coroutines.launch
 import java.util.*
 

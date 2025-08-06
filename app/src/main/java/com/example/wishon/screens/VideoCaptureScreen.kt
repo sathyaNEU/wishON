@@ -1,5 +1,5 @@
 // app/src/main/java/com/example/voicefirstapp/screens/VideoCaptureScreen.kt
-package com.example.voicefirstapp.screens
+package com.example.wishon.screens
 
 import android.net.Uri
 import android.speech.tts.TextToSpeech
@@ -18,9 +18,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.voicefirstapp.components.CameraPreview
-import com.example.voicefirstapp.utils.VideoFrameExtractor
-import com.example.voicefirstapp.utils.ExtractedFrame
+import com.example.wishon.components.CameraPreview
+import com.example.wishon.utils.VideoFrameExtractor
+import com.example.wishon.utils.ExtractedFrame
 import kotlinx.coroutines.delay
 
 @Composable

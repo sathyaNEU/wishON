@@ -1,4 +1,4 @@
-package com.example.voicefirstapp.ui.theme
+package com.example.wishon.ui.theme
 
 import androidx.compose.ui.graphics.Color
 

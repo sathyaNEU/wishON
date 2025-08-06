@@ -1,5 +1,5 @@
 // app/src/main/java/com/example/voicefirstapp/VoiceFirstApp.kt
-package com.example.voicefirstapp
+package com.example.wishon
 
 import android.speech.tts.TextToSpeech
 import androidx.compose.runtime.Composable
@@ -10,8 +10,8 @@ import androidx.compose.runtime.setValue
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.example.voicefirstapp.screens.*
-import com.example.voicefirstapp.utils.ExtractedFrame
+import com.example.wishon.screens.*
+import com.example.wishon.utils.ExtractedFrame
 
 @Composable
 fun VoiceFirstApp(tts: TextToSpeech?) {
@@ -21,6 +21,7 @@ fun VoiceFirstApp(tts: TextToSpeech?) {
     var extractedFrames: List<ExtractedFrame> by remember { mutableStateOf(emptyList()) }
     var userQuestion: String by remember { mutableStateOf("") }
     var assistanceType: AssistanceType by remember { mutableStateOf(AssistanceType.VISION) }
+    var selectedLanguage: SupportedLanguage by remember { mutableStateOf(SupportedLanguage.ENGLISH) }
 
     NavHost(
         navController = navController,
@@ -31,6 +32,16 @@ fun VoiceFirstApp(tts: TextToSpeech?) {
                 tts = tts,
                 onNavigateToVoiceInput = { selectedType ->
                     assistanceType = selectedType
+                    navController.navigate("language_preference")
+                }
+            )
+        }
+
+        composable("language_preference") {
+            LanguagePreferenceScreen(
+                tts = tts,
+                onLanguageSelected = { language ->
+                    selectedLanguage = language
                     navController.navigate("voice_input")
                 }
             )
@@ -65,6 +76,7 @@ fun VoiceFirstApp(tts: TextToSpeech?) {
             VideoProcessingScreen(
                 frames = extractedFrames,
                 userQuestion = userQuestion,
+                selectedLanguage = selectedLanguage, // Pass language to processing
                 tts = tts,
                 onNavigateToResult = { result ->
                     navController.navigate("result/$result")
@@ -75,6 +87,7 @@ fun VoiceFirstApp(tts: TextToSpeech?) {
         composable("audio_processing") {
             AudioProcessingScreen(
                 userQuestion = userQuestion,
+                selectedLanguage = selectedLanguage, // Pass language to processing
                 tts = tts,
                 onNavigateToResult = { result ->
                     navController.navigate("result/$result")
@@ -86,12 +99,15 @@ fun VoiceFirstApp(tts: TextToSpeech?) {
             val result = backStackEntry.arguments?.getString("result") ?: "Sorry, I couldn't analyze the content."
             ResultScreen(
                 result = result,
+                selectedLanguage = selectedLanguage, // Pass language to result screen
+                assistanceType = assistanceType, // Pass assistance type to result screen
                 tts = tts,
                 onNavigateToHome = {
                     // Reset state when going back to customer preference screen
                     extractedFrames = emptyList()
                     userQuestion = ""
                     assistanceType = AssistanceType.VISION
+                    selectedLanguage = SupportedLanguage.ENGLISH
                     navController.navigate("customer_preference") {
                         popUpTo("customer_preference") { inclusive = true }
                     }

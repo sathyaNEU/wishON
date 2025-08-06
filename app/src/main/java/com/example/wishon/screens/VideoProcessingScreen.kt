@@ -1,5 +1,5 @@
 // app/src/main/java/com/example/voicefirstapp/screens/VideoProcessingScreen.kt
-package com.example.voicefirstapp.screens
+package com.example.wishon.screens
 
 import android.speech.tts.TextToSpeech
 import androidx.compose.foundation.Image
@@ -20,15 +20,16 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.voicefirstapp.components.AudioWaveAnimation
-import com.example.voicefirstapp.utils.GemmaLLMService
-import com.example.voicefirstapp.utils.ExtractedFrame
+import com.example.wishon.components.AudioWaveAnimation
+import com.example.wishon.utils.GemmaLLMService
+import com.example.wishon.utils.ExtractedFrame
 import kotlinx.coroutines.delay
 
 @Composable
 fun VideoProcessingScreen(
     frames: List<ExtractedFrame>,
     userQuestion: String,
+    selectedLanguage: SupportedLanguage,
     tts: TextToSpeech?,
     onNavigateToResult: (String) -> Unit
 ) {
@@ -83,7 +84,7 @@ fun VideoProcessingScreen(
                 delay(500)
 
                 // Process single frame with real-time logging
-                GemmaLLMService.analyzeFrameWithUserQuestion(frames[0], userQuestion)
+                GemmaLLMService.analyzeFrameWithUserQuestion(frames[0], userQuestion,selectedLanguage.llmLanguageName)
 
             } catch (e: Exception) {
                 android.util.Log.e("ProcessingScreen", "Error during analysis", e)

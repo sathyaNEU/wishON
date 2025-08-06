@@ -1,9 +1,8 @@
 // app/src/main/java/com/example/voicefirstapp/screens/AudioProcessingScreen.kt
-package com.example.voicefirstapp.screens
+package com.example.wishon.screens
 
 import android.speech.tts.TextToSpeech
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -12,8 +11,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -21,13 +18,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.voicefirstapp.components.AudioWaveAnimation
-import com.example.voicefirstapp.utils.GemmaLLMService
+import com.example.wishon.components.AudioWaveAnimation
+import com.example.wishon.utils.GemmaLLMService
 import kotlinx.coroutines.delay
 
 @Composable
 fun AudioProcessingScreen(
     userQuestion: String, // This is now the text from voice input
+    selectedLanguage: SupportedLanguage, // Add this line
     tts: TextToSpeech?,
     onNavigateToResult: (String) -> Unit
 ) {
@@ -85,15 +83,7 @@ fun AudioProcessingScreen(
             // Create a prompt based on the user's question for hearing assistance
             val prompt = if (userQuestion.isNotEmpty()) {
                 """You are a helpful AI assistant specializing in hearing accessibility support. The user has asked: "$userQuestion"
-
-Please provide a comprehensive, clear, and helpful response. Consider the following types of hearing assistance:
-- Text-to-speech conversion
-- Language translation
-- Audio content descriptions
-- Communication assistance
-- Accessibility support
-
-Provide a detailed answer that would be useful for someone who may have hearing difficulties or needs audio-related assistance."""
+Provide a concise, clear, and helpful answer that would be useful for someone who may have hearing difficulties or needs audio-related assistance."""
             } else {
                 """You are a helpful AI assistant specializing in hearing accessibility support. The user is requesting general hearing assistance.
 
@@ -108,7 +98,7 @@ Keep your response clear, practical, and supportive."""
             }
 
             // Use the Gemma LLM service to generate response
-            GemmaLLMService.generateResponse(prompt)
+            GemmaLLMService.generateResponse(prompt, selectedLanguage.llmLanguageName)
 
         } catch (e: Exception) {
             android.util.Log.e("AudioProcessingScreen", "Error during text analysis", e)

@@ -1,5 +1,5 @@
 // app/src/main/java/com/example/voicefirstapp/utils/GemmaLLMService.kt
-package com.example.voicefirstapp.utils
+package com.example.wishon.utils
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -8,7 +8,6 @@ import android.util.Log
 import com.google.mediapipe.tasks.genai.llminference.LlmInference
 import com.google.mediapipe.tasks.genai.llminference.LlmInferenceSession
 import com.google.mediapipe.framework.image.BitmapImageBuilder
-import com.google.mediapipe.framework.image.MPImage
 import com.google.mediapipe.tasks.genai.llminference.GraphOptions
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -324,7 +323,7 @@ object GemmaLLMService {
         )
     }
 
-    suspend fun generateResponse(prompt: String): String {
+    suspend fun generateResponse(prompt: String, language: String = "English"): String {
         return withContext(Dispatchers.IO) {
             val currentLlm = llmInference
             if (currentLlm == null) {
@@ -333,9 +332,14 @@ object GemmaLLMService {
             }
 
             try {
-                Log.d(TAG, "=== GEMMA MODEL INPUT (Text Only) ===")
+                Log.d(TAG, "=== GEMMA MODEL INPUT (Text Only - $language) ===")
                 Log.d(TAG, "Prompt: $prompt")
                 Log.d(TAG, "====================================")
+
+                // Add language instruction to prompt
+                val languagePrompt = """$prompt
+
+Please respond in: $language"""
 
                 // Use session for consistency with multimodal approach
                 val sessionOptions = LlmInferenceSession.LlmInferenceSessionOptions.builder()
@@ -345,7 +349,7 @@ object GemmaLLMService {
 
                 currentLlm.use { llm ->
                     LlmInferenceSession.createFromOptions(llm, sessionOptions).use { session ->
-                        session.addQueryChunk(prompt)
+                        session.addQueryChunk(languagePrompt)
                         val response = session.generateResponse().trim()
                         return@withContext response
                     }
@@ -359,7 +363,8 @@ object GemmaLLMService {
 
     suspend fun analyzeImageForBlindUser(
         bitmap: Bitmap,
-        userQuestion: String? = null
+        userQuestion: String? = null,
+        language: String = "English"
     ): String {
         return withContext(Dispatchers.IO) {
             val currentLlm = llmInference
@@ -369,26 +374,25 @@ object GemmaLLMService {
             }
 
             try {
-                Log.d(TAG, "Analyzing image with multimodal capabilities")
+                Log.d(TAG, "Analyzing image with multimodal capabilities in $language")
 
                 // Convert bitmap to MPImage
                 val mpImage = BitmapImageBuilder(bitmap).build()
-                val language = "spanish"
+
                 val basePrompt = if (userQuestion != null) {
                     """
-    You are assisting a blind user. Analyze the provided image and answer their question clearly and helpfully.
-    Question: $userQuestion
-    
-    Respond in: $language
-    """.trimIndent()
+You are assisting a blind user. Analyze the provided image and answer their question clearly and helpfully.
+Question: $userQuestion
+
+Respond in: $language
+""".trimIndent()
                 } else {
                     """
-    You are describing an image to a blind user. Mention the main scene, people or objects, layout, colors, any visible text, and anything important or potentially unsafe. Be clear, concise, and fast.
+You are describing an image to a blind user. Mention the main scene, people or objects, layout, colors, any visible text, and anything important or potentially unsafe. Be clear, concise, and fast.
 
-    Respond in: $language
-    """.trimIndent()
+Respond in: $language
+""".trimIndent()
                 }
-
 
                 // Create session with vision modality enabled
                 val sessionOptions = LlmInferenceSession.LlmInferenceSessionOptions.builder()
@@ -424,9 +428,10 @@ object GemmaLLMService {
 
     suspend fun analyzeFrameWithUserQuestion(
         frame: ExtractedFrame,
-        userQuestion: String
+        userQuestion: String,
+        language: String = "English"
     ): String {
-        return analyzeImageForBlindUser(frame.bitmap, userQuestion)
+        return analyzeImageForBlindUser(frame.bitmap, userQuestion, language)
     }
 
     fun cleanup() {
@@ -452,5 +457,4 @@ object GemmaLLMService {
             status.errorMessage ?: "Model status unknown"
         }
     }
-
 }

@@ -1,5 +1,5 @@
 // app/src/main/java/com/example/voicefirstapp/utils/VideoFrameExtractor.kt
-package com.example.voicefirstapp.utils
+package com.example.wishon.utils
 
 import android.content.Context
 import android.graphics.Bitmap

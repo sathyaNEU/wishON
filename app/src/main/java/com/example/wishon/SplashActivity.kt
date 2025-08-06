@@ -1,5 +1,5 @@
 // app/src/main/java/com/example/voicefirstapp/SplashActivity.kt
-package com.example.voicefirstapp
+package com.example.wishon
 
 import android.content.Intent
 import android.os.Bundle
@@ -28,7 +28,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
-import com.example.voicefirstapp.ui.theme.VoiceFirstAppTheme
+import com.example.wishon.ui.theme.VoiceFirstAppTheme
 import kotlinx.coroutines.delay
 
 class SplashActivity : ComponentActivity() {

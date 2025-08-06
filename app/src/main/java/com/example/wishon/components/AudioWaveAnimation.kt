@@ -1,5 +1,5 @@
 // app/src/main/java/com/example/voicefirstapp/components/AudioWaveAnimation.kt
-package com.example.voicefirstapp.components
+package com.example.wishon.components
 
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas

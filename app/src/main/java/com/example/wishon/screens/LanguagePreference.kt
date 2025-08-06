@@ -1,5 +1,5 @@
-// app/src/main/java/com/example/voicefirstapp/screens/CustomerPreferenceScreen.kt
-package com.example.voicefirstapp.screens
+// app/src/main/java/com/example/voicefirstapp/screens/LanguagePreferenceScreen.kt
+package com.example.wishon.screens
 
 import android.Manifest
 import android.content.Intent
@@ -9,13 +9,14 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Hearing
-import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -29,24 +30,57 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import com.example.voicefirstapp.components.WaveformAnimation
+import com.example.wishon.components.WaveformAnimation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.*
 
-enum class AssistanceType {
-    VISION, HEARING
+enum class SupportedLanguage(
+    val displayName: String,
+    val voiceKeywords: List<String>,
+    val llmLanguageName: String
+) {
+    ENGLISH(
+        displayName = "English",
+        voiceKeywords = listOf("english", "inglés", "anglais", "englisch"),
+        llmLanguageName = "English"
+    ),
+    SPANISH(
+        displayName = "Español",
+        voiceKeywords = listOf("spanish", "español", "espagnol", "spanisch"),
+        llmLanguageName = "Spanish"
+    ),
+    FRENCH(
+        displayName = "Français",
+        voiceKeywords = listOf("french", "francés", "français", "französisch"),
+        llmLanguageName = "French"
+    ),
+    GERMAN(
+        displayName = "Deutsch",
+        voiceKeywords = listOf("german", "alemán", "allemand", "deutsch"),
+        llmLanguageName = "German"
+    ),
+    HINDI(
+        displayName = "हिन्दी",
+        voiceKeywords = listOf("hindi", "हिन्दी", "हिंदी", "hindou"),
+        llmLanguageName = "Hindi"
+    ),
+    CHINESE(
+        displayName = "中文",
+        voiceKeywords = listOf("chinese", "chino", "chinois", "中文", "mandarin"),
+        llmLanguageName = "Chinese"
+    )
 }
 
 @Composable
-fun CustomerPreferenceScreen(
+fun LanguagePreferenceScreen(
     tts: TextToSpeech?,
-    onNavigateToVoiceInput: (AssistanceType) -> Unit
+    onLanguageSelected: (SupportedLanguage) -> Unit
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var recognizedText by remember { mutableStateOf("") }
-    var selectedType by remember { mutableStateOf<AssistanceType?>(null) }
+    var selectedLanguage by remember { mutableStateOf<SupportedLanguage?>(null) }
     var hasNavigated by remember { mutableStateOf(false) }
     var speechRecognizer by remember { mutableStateOf<SpeechRecognizer?>(null) }
     var isListening by remember { mutableStateOf(false) }
@@ -73,40 +107,39 @@ fun CustomerPreferenceScreen(
 
         val lowerText = text.lowercase().trim()
 
-        when {
-            lowerText.contains("hear") -> {
-                hasNavigated = true
-                selectedType = AssistanceType.HEARING
-                stopSpeechRecognizer()
-                tts?.speak("Hearing support selected", TextToSpeech.QUEUE_FLUSH, null, "hearing_selected")
-                coroutineScope.launch {
-                    delay(2000) // 2 seconds delay
-                    onNavigateToVoiceInput(AssistanceType.HEARING)
-                }
-            }
-            lowerText.contains("vision") || lowerText.contains("see") -> {
-                hasNavigated = true
-                selectedType = AssistanceType.VISION
-                stopSpeechRecognizer()
-                tts?.speak("Vision support selected", TextToSpeech.QUEUE_FLUSH, null, "vision_selected")
-                coroutineScope.launch {
-                    delay(2000) // 2 seconds delay
-                    onNavigateToVoiceInput(AssistanceType.VISION)
+        // Check each language for matches
+        for (language in SupportedLanguage.values()) {
+            for (keyword in language.voiceKeywords) {
+                if (lowerText.contains(keyword.lowercase())) {
+                    hasNavigated = true
+                    selectedLanguage = language
+                    stopSpeechRecognizer()
+
+                    tts?.speak(
+                        "${language.displayName} selected",
+                        TextToSpeech.QUEUE_FLUSH,
+                        null,
+                        "language_selected"
+                    )
+
+                    coroutineScope.launch {
+                        delay(2000) // 2 seconds delay
+                        onLanguageSelected(language)
+                    }
+                    return
                 }
             }
         }
     }
 
-    // Start listening function with better error handling
+    // Start listening function (same logic as CustomerPreferenceScreen)
     fun startListening() {
         if (hasNavigated || permissionDenied) return
 
-        // Check if speech recognition is available
         if (!SpeechRecognizer.isRecognitionAvailable(context)) {
             return
         }
 
-        // Check microphone permission
         if (ContextCompat.checkSelfPermission(
                 context,
                 Manifest.permission.RECORD_AUDIO
@@ -116,7 +149,6 @@ fun CustomerPreferenceScreen(
             return
         }
 
-        // Stop any existing recognizer
         stopSpeechRecognizer()
 
         try {
@@ -146,7 +178,6 @@ fun CustomerPreferenceScreen(
                 override fun onEndOfSpeech() {
                     if (!hasNavigated) {
                         isListening = false
-                        // Restart listening after a short delay
                         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                             if (!hasNavigated) {
                                 startListening()
@@ -160,7 +191,6 @@ fun CustomerPreferenceScreen(
 
                     isListening = false
 
-                    // Only restart on certain errors
                     when (error) {
                         SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> {
                             permissionDenied = true
@@ -168,7 +198,6 @@ fun CustomerPreferenceScreen(
                         }
                         SpeechRecognizer.ERROR_CLIENT,
                         SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {
-                            // Wait longer before retrying on client errors
                             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                                 if (!hasNavigated) {
                                     startListening()
@@ -220,8 +249,6 @@ fun CustomerPreferenceScreen(
             speechRecognizer?.startListening(intent)
 
         } catch (e: Exception) {
-            // If we can't start speech recognition, don't show error to user
-            // Just continue without voice recognition
             isListening = false
         }
     }
@@ -229,6 +256,13 @@ fun CustomerPreferenceScreen(
     // Start listening when screen loads
     LaunchedEffect(Unit) {
         delay(500) // Small delay to let screen settle
+        tts?.speak(
+            "Choose your language. Touch a language or say the name",
+            TextToSpeech.QUEUE_FLUSH,
+            null,
+            "language_instruction"
+        )
+        delay(1000)
         startListening()
     }
 
@@ -244,7 +278,7 @@ fun CustomerPreferenceScreen(
         modifier = Modifier
             .fillMaxSize()
             .semantics {
-                contentDescription = "Choose assistance type: Vision support on the left, Hearing support on the right, or say your preference"
+                contentDescription = "Choose your language: Touch a language card or say the language name"
             }
     ) {
         // Header
@@ -254,16 +288,27 @@ fun CustomerPreferenceScreen(
                 .padding(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(
-                text = "Choose Your Assistance",
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(bottom = 8.dp)
-            )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Language,
+                    contentDescription = "Language selection",
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(32.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = "Choose Language",
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
 
             Text(
-                text = "Touch left for Vision • Touch right for Hearing\nOr say \"vision\" or \"hearing\"",
+                text = "Touch a language or say its name",
                 fontSize = 16.sp,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
@@ -286,7 +331,7 @@ fun CustomerPreferenceScreen(
                 }
             }
 
-            // Listening indicator - only show if actively listening and no permission issues
+            // Listening indicator
             if (isListening && !permissionDenied) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -317,144 +362,54 @@ fun CustomerPreferenceScreen(
             }
         }
 
-        // Split screen options
-        Row(
+        // Language options in a scrollable grid
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .weight(1f)
+                .padding(horizontal = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Vision Support (Left Side)
-            Card(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .padding(8.dp)
-                    .clickable {
-                        if (!hasNavigated) {
-                            hasNavigated = true
-                            selectedType = AssistanceType.VISION
-                            stopSpeechRecognizer()
-                            tts?.speak("Vision support selected", TextToSpeech.QUEUE_FLUSH, null, "vision_selected")
-
-                            // Add 2-second delay before navigation
-                            coroutineScope.launch {
-                                delay(2000) // 2 seconds delay
-                                onNavigateToVoiceInput(AssistanceType.VISION)
-                            }
-                        }
-                    }
-                    .semantics {
-                        contentDescription = "Vision support - Touch to select help with seeing and identifying objects"
-                    },
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                ),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
+            items(SupportedLanguage.values().toList().chunked(2)) { rowLanguages ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Visibility,
-                        contentDescription = "Vision icon",
-                        modifier = Modifier.size(80.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                    rowLanguages.forEach { language ->
+                        LanguageCard(
+                            language = language,
+                            isSelected = selectedLanguage == language,
+                            onClick = {
+                                if (!hasNavigated) {
+                                    hasNavigated = true
+                                    selectedLanguage = language
+                                    stopSpeechRecognizer()
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                                    tts?.speak(
+                                        "${language.displayName} selected",
+                                        TextToSpeech.QUEUE_FLUSH,
+                                        null,
+                                        "language_selected"
+                                    )
 
-                    Text(
-                        text = "VISION\nSUPPORT",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        lineHeight = 28.sp
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Text(
-                        text = "• Identify objects\n• Read text\n• Describe scenes\n• Navigation help",
-                        fontSize = 16.sp,
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
-                        lineHeight = 20.sp
-                    )
-                }
-            }
-
-            // Hearing Support (Right Side)
-            Card(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .padding(8.dp)
-                    .clickable {
-                        if (!hasNavigated) {
-                            hasNavigated = true
-                            selectedType = AssistanceType.HEARING
-                            stopSpeechRecognizer()
-                            tts?.speak("Hearing support selected", TextToSpeech.QUEUE_FLUSH, null, "hearing_selected")
-
-                            // Add 2-second delay before navigation
-                            coroutineScope.launch {
-                                delay(2000) // 2 seconds delay
-                                onNavigateToVoiceInput(AssistanceType.HEARING)
-                            }
-                        }
+                                    coroutineScope.launch {
+                                        delay(2000)
+                                        onLanguageSelected(language)
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
                     }
-                    .semantics {
-                        contentDescription = "Hearing support - Touch to select help with audio and sound recognition"
-                    },
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer
-                ),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Hearing,
-                        contentDescription = "Hearing icon",
-                        modifier = Modifier.size(80.dp),
-                        tint = MaterialTheme.colorScheme.secondary
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Text(
-                        text = "HEARING\nSUPPORT",
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        lineHeight = 28.sp
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Text(
-                        text = "• Sound identification\n• Audio transcription\n• Voice commands\n• Audio assistance",
-                        fontSize = 16.sp,
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f),
-                        lineHeight = 20.sp
-                    )
+                    // If odd number of languages, add spacer
+                    if (rowLanguages.size == 1) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
                 }
             }
         }
 
-        // Voice visualization at bottom - only show if listening
+        // Voice visualization at bottom
         if (isListening && !permissionDenied) {
             Column(
                 modifier = Modifier
@@ -469,5 +424,93 @@ fun CustomerPreferenceScreen(
                 )
             }
         }
+    }
+}
+
+@Composable
+fun LanguageCard(
+    language: SupportedLanguage,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .aspectRatio(1.2f)
+            .clickable { onClick() }
+            .semantics {
+                contentDescription = "Select ${language.displayName} language"
+            },
+        colors = CardDefaults.cardColors(
+            containerColor = if (isSelected)
+                MaterialTheme.colorScheme.primary
+            else
+                MaterialTheme.colorScheme.surfaceVariant
+        ),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = if (isSelected) 8.dp else 4.dp
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = getLanguageEmoji(language),
+                fontSize = 32.sp,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            Text(
+                text = language.displayName,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+                color = if (isSelected)
+                    MaterialTheme.colorScheme.onPrimary
+                else
+                    MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Text(
+                text = getLanguageExample(language),
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center,
+                color = if (isSelected)
+                    MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
+                else
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                maxLines = 1
+            )
+        }
+    }
+}
+
+private fun getLanguageEmoji(language: SupportedLanguage): String {
+    return when (language) {
+        SupportedLanguage.ENGLISH -> "🇺🇸"
+        SupportedLanguage.SPANISH -> "🇪🇸"
+        SupportedLanguage.FRENCH -> "🇫🇷"
+        SupportedLanguage.GERMAN -> "🇩🇪"
+        SupportedLanguage.HINDI -> "🇮🇳"
+        SupportedLanguage.CHINESE -> "🇨🇳"
+    }
+}
+
+private fun getLanguageExample(language: SupportedLanguage): String {
+    return when (language) {
+        SupportedLanguage.ENGLISH -> "Hello"
+        SupportedLanguage.SPANISH -> "Hola"
+        SupportedLanguage.FRENCH -> "Bonjour"
+        SupportedLanguage.GERMAN -> "Hallo"
+        SupportedLanguage.HINDI -> "नमस्ते"
+        SupportedLanguage.CHINESE -> "你好"
     }
 }

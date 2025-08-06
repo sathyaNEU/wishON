@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-    namespace = "com.example.voicefirstapp"
+    namespace = "com.example.wishon"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.voicefirstapp"
+        applicationId = "com.example.wishon"
         minSdk = 31  // Updated to match Gallery app requirements
         targetSdk = 35  // Updated to match Gallery app
         versionCode = 1

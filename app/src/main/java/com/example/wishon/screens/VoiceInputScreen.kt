@@ -1,5 +1,5 @@
 // app/src/main/java/com/example/voicefirstapp/screens/VoiceInputScreen.kt
-package com.example.voicefirstapp.screens
+package com.example.wishon.screens
 
 import android.Manifest
 import android.content.Intent
@@ -25,7 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import com.example.voicefirstapp.components.WaveformAnimation
+import com.example.wishon.components.WaveformAnimation
 import kotlinx.coroutines.delay
 import java.util.*
 

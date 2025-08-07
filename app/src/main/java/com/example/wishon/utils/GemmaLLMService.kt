@@ -13,6 +13,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.net.URL
+import java.net.HttpURLConnection
 
 data class ModelStatus(
     val isFound: Boolean,
@@ -29,12 +31,17 @@ object GemmaLLMService {
     private const val TAG = "GemmaLLMService"
     private const val MODEL_FILENAME = "model_version.task"
     private const val IMPORTS_DIR = "imports"
+    private const val MODEL_DOWNLOAD_URL = "https://data-for-all.s3.us-east-1.amazonaws.com/model_version.task"
 
     // Add callback for UI updates
     var onStatusUpdate: ((String) -> Unit)? = null
 
     private fun getAppPrivateModelPath(context: Context): String {
         return File(context.getExternalFilesDir(null), "$IMPORTS_DIR/$MODEL_FILENAME").absolutePath
+    }
+
+    private fun getDownloadsModelPath(): String {
+        return "/storage/emulated/0/Download/$MODEL_FILENAME"
     }
 
     private fun findModelInPublicStorage(): String? {
@@ -58,6 +65,103 @@ object GemmaLLMService {
         }
 
         return null
+    }
+
+    private suspend fun downloadModelToDownloads(): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                onStatusUpdate?.invoke("Downloading AI model from server...")
+                Log.d(TAG, "Starting download from: $MODEL_DOWNLOAD_URL")
+
+                val url = URL(MODEL_DOWNLOAD_URL)
+                val connection = url.openConnection() as HttpURLConnection
+                connection.requestMethod = "GET"
+                connection.connectTimeout = 30000
+                connection.readTimeout = 60000
+
+                val responseCode = connection.responseCode
+                if (responseCode != HttpURLConnection.HTTP_OK) {
+                    onStatusUpdate?.invoke("❌ Download failed: Server returned $responseCode")
+                    return@withContext false
+                }
+
+                val fileLength = connection.contentLength
+                val fileLengthMB = fileLength / (1024 * 1024)
+
+                onStatusUpdate?.invoke("Downloading model (${fileLengthMB} MB)...")
+
+                val downloadFile = File(getDownloadsModelPath())
+
+                // Create Downloads directory if it doesn't exist
+                downloadFile.parentFile?.let { parentDir ->
+                    if (!parentDir.exists()) {
+                        parentDir.mkdirs()
+                    }
+                }
+
+                connection.inputStream.use { input ->
+                    FileOutputStream(downloadFile).use { output ->
+                        val buffer = ByteArray(8192)
+                        var bytesRead: Int
+                        var totalBytes = 0L
+                        var lastProgressUpdate = 0L
+
+                        while (input.read(buffer).also { bytesRead = it } != -1) {
+                            output.write(buffer, 0, bytesRead)
+                            totalBytes += bytesRead
+
+                            // Update progress every 500ms for downloads
+                            val currentTime = System.currentTimeMillis()
+                            if (currentTime - lastProgressUpdate > 500) {
+                                if (fileLength > 0) {
+                                    val progress = (totalBytes * 100 / fileLength).toInt()
+                                    val downloadedMB = totalBytes / (1024 * 1024)
+                                    onStatusUpdate?.invoke("Downloading: $progress% ($downloadedMB MB / $fileLengthMB MB)")
+                                } else {
+                                    val downloadedMB = totalBytes / (1024 * 1024)
+                                    onStatusUpdate?.invoke("Downloading: $downloadedMB MB")
+                                }
+                                lastProgressUpdate = currentTime
+                            }
+                        }
+                    }
+                }
+
+                connection.disconnect()
+
+                // Verify download
+                if (downloadFile.exists() && downloadFile.length() > 0) {
+                    val downloadedSizeMB = downloadFile.length() / (1024 * 1024)
+                    onStatusUpdate?.invoke("✅ Model downloaded successfully ($downloadedSizeMB MB)")
+                    Log.d(TAG, "Model downloaded successfully to ${downloadFile.absolutePath}")
+                    return@withContext true
+                } else {
+                    onStatusUpdate?.invoke("❌ Download verification failed")
+                    return@withContext false
+                }
+
+            } catch (e: java.net.SocketTimeoutException) {
+                val errorMsg = "❌ Download timeout - please check your internet connection"
+                Log.e(TAG, errorMsg, e)
+                onStatusUpdate?.invoke(errorMsg)
+                return@withContext false
+            } catch (e: java.net.UnknownHostException) {
+                val errorMsg = "❌ Network error - please check your internet connection"
+                Log.e(TAG, errorMsg, e)
+                onStatusUpdate?.invoke(errorMsg)
+                return@withContext false
+            } catch (e: java.io.IOException) {
+                val errorMsg = "❌ Download failed: ${e.message}"
+                Log.e(TAG, errorMsg, e)
+                onStatusUpdate?.invoke(errorMsg)
+                return@withContext false
+            } catch (e: Exception) {
+                val errorMsg = "❌ Download error: ${e.message}"
+                Log.e(TAG, errorMsg, e)
+                onStatusUpdate?.invoke(errorMsg)
+                return@withContext false
+            }
+        }
     }
 
     suspend fun importModelFromUri(context: Context, uri: Uri): Boolean {
@@ -130,6 +234,53 @@ object GemmaLLMService {
 
             } catch (e: Exception) {
                 val errorMsg = "Failed to import model from URI: ${e.message}"
+                Log.e(TAG, errorMsg, e)
+                onStatusUpdate?.invoke(errorMsg)
+                return@withContext false
+            }
+        }
+    }
+
+    suspend fun ensureModelAvailable(context: Context): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val privateModelPath = getAppPrivateModelPath(context)
+                val privateModelFile = File(privateModelPath)
+
+                // Check if model already exists in private storage
+                if (privateModelFile.exists() && privateModelFile.length() > 0) {
+                    Log.d(TAG, "Model already exists in private storage")
+                    return@withContext true
+                }
+
+                // Check if model exists in public storage
+                val publicModelPath = findModelInPublicStorage()
+                if (publicModelPath != null) {
+                    Log.d(TAG, "Model found in public storage, will import during initialization")
+                    return@withContext true
+                }
+
+                // Model not found locally, attempt to download
+                onStatusUpdate?.invoke("Model not found locally, downloading...")
+                Log.d(TAG, "Model not found locally, attempting download")
+
+                val downloadSuccess = downloadModelToDownloads()
+                if (!downloadSuccess) {
+                    return@withContext false
+                }
+
+                // Verify the downloaded model exists
+                val downloadedModel = File(getDownloadsModelPath())
+                if (downloadedModel.exists() && downloadedModel.length() > 0) {
+                    Log.d(TAG, "Download verification successful")
+                    return@withContext true
+                } else {
+                    onStatusUpdate?.invoke("❌ Download verification failed")
+                    return@withContext false
+                }
+
+            } catch (e: Exception) {
+                val errorMsg = "Error ensuring model availability: ${e.message}"
                 Log.e(TAG, errorMsg, e)
                 onStatusUpdate?.invoke(errorMsg)
                 return@withContext false
@@ -216,7 +367,13 @@ object GemmaLLMService {
             try {
                 onStatusUpdate?.invoke("Checking model availability...")
 
-                // First, import model if needed
+                // First, ensure model is available (download if needed)
+                val modelAvailable = ensureModelAvailable(context)
+                if (!modelAvailable) {
+                    return@withContext false
+                }
+
+                // Then, import model if needed
                 val importSuccess = importModelIfNeeded(context)
                 if (!importSuccess) {
                     return@withContext false
@@ -314,10 +471,10 @@ object GemmaLLMService {
 
         return ModelStatus(
             isFound = false,
-            location = "Not found",
+            location = "Not found - will download automatically",
             sizeInMB = 0,
             isInitialized = false,
-            errorMessage = "Model file '$MODEL_FILENAME' not found in Downloads folder",
+            errorMessage = "Model will be downloaded from server when needed",
             needsImport = false,
             supportsVision = false
         )
@@ -381,7 +538,12 @@ Please respond in: $language"""
 
                 val basePrompt = if (userQuestion != null) {
                     """
-You are assisting a blind user. Analyze the provided image and answer their question clearly and helpfully.
+You are assisting a blind user using an AI assistant. Analyze the provided image and provide a clear, descriptive, and helpful answer to their question.
+
+Your goal is to be accurate, concise, and supportive. Include important details such as people, objects, text, surroundings, and any notable activity in the scene.
+
+If the image depicts anything potentially unsafe, confusing, or urgent (such as obstacles, crowds, traffic, or signs of danger), prioritize clear warnings and provide immediate, actionable guidance the user can follow to stay safe.
+
 Question: $userQuestion
 
 Respond in: $language
@@ -389,6 +551,7 @@ Respond in: $language
                 } else {
                     """
 You are describing an image to a blind user. Mention the main scene, people or objects, layout, colors, any visible text, and anything important or potentially unsafe. Be clear, concise, and fast.
+If the image depicts anything potentially unsafe, confusing, or urgent (such as obstacles, crowds, traffic, or signs of danger), prioritize clear warnings and provide immediate, actionable guidance the user can follow to stay safe.
 
 Respond in: $language
 """.trimIndent()
@@ -405,7 +568,7 @@ Respond in: $language
                     )
                     .build()
 
-                Log.d(TAG, "=== GEMMA MODEL INPUT (Text Only - $language) ===")
+                Log.d(TAG, "=== GEMMA MODEL INPUT (Multimodal - $language) ===")
                 Log.d(TAG, "Prompt: $basePrompt")
                 Log.d(TAG, "====================================")
 

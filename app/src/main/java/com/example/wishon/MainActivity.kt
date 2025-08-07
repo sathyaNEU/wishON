@@ -34,6 +34,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
     private var loadingStatus by mutableStateOf("Checking permissions...")
     private var modelStatus by mutableStateOf("Unknown")
     private var showFilePickerOption by mutableStateOf(false)
+    private var showNetworkOptions by mutableStateOf(false)
 
     // File picker launcher
     private val filePickerLauncher = registerForActivityResult(
@@ -65,8 +66,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 prepareModel()
             } else {
                 Log.w("MainActivity", "MANAGE_EXTERNAL_STORAGE permission denied")
-                loadingStatus = "Storage permission denied - will try file picker"
-                showFilePickerOption = true
+                loadingStatus = "Storage permission denied - will try downloading or file picker"
+                showNetworkOptions = true
             }
         }
     }
@@ -106,7 +107,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         // Check model status first
         updateModelStatus()
 
-        // Request necessary permissions
+        // Request necessary permissions including network
         requestPermissions()
 
         setContent {
@@ -120,8 +121,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     } else {
                         ModelLoadingScreen(
                             loadingStatus = loadingStatus,
-                            modelStatus = modelStatus,
                             showFilePickerOption = showFilePickerOption,
+                            showNetworkOptions = showNetworkOptions,
                             onRetry = {
                                 updateModelStatus()
                                 checkStoragePermission()
@@ -131,6 +132,11 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                             },
                             onRequestStoragePermission = {
                                 requestStoragePermission()
+                            },
+                            onDownloadModel = {
+                                lifecycleScope.launch {
+                                    prepareModel()
+                                }
                             }
                         )
                     }
@@ -147,28 +153,30 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             status.isFound && status.needsImport ->
                 "📁 Model found in Downloads: ${status.sizeInMB} MB (needs import)"
             else ->
-                "❌ ${status.errorMessage}"
+                "📥 ${status.errorMessage}"
         }
     }
 
     private fun requestPermissions() {
         loadingStatus = "Checking permissions..."
 
-        // Enhanced permissions for both vision and audio support
+        // Enhanced permissions for vision, audio support, and network access
         val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             arrayOf(
                 Manifest.permission.RECORD_AUDIO,
                 Manifest.permission.CAMERA,
                 Manifest.permission.READ_MEDIA_VIDEO,
                 Manifest.permission.READ_MEDIA_IMAGES,
-                Manifest.permission.READ_MEDIA_AUDIO // For audio processing
+                Manifest.permission.READ_MEDIA_AUDIO,
+                Manifest.permission.INTERNET // For model downloading
             )
         } else {
             arrayOf(
                 Manifest.permission.RECORD_AUDIO,
                 Manifest.permission.CAMERA,
                 Manifest.permission.READ_EXTERNAL_STORAGE,
-                Manifest.permission.WRITE_EXTERNAL_STORAGE
+                Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                Manifest.permission.INTERNET // For model downloading
             )
         }
 
@@ -177,7 +185,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
         }.toTypedArray()
 
         if (permissionsToRequest.isNotEmpty()) {
-            loadingStatus = "Requesting ${permissionsToRequest.size} permissions for vision and audio support..."
+            loadingStatus = "Requesting ${permissionsToRequest.size} permissions for vision, audio, and network support..."
             Log.d("MainActivity", "Requesting permissions: ${permissionsToRequest.joinToString()}")
             requestPermissionLauncher.launch(permissionsToRequest)
         } else {
@@ -194,8 +202,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 prepareModel()
             } else {
                 Log.d("MainActivity", "MANAGE_EXTERNAL_STORAGE not granted")
-                loadingStatus = "Need storage permission to access Downloads folder for AI model"
-                showFilePickerOption = true
+                loadingStatus = "Need storage permission to save model, or can download directly"
+                showNetworkOptions = true
             }
         } else {
             // For older Android versions, use regular READ_EXTERNAL_STORAGE
@@ -204,8 +212,8 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                 loadingStatus = "Storage access granted, preparing AI model..."
                 prepareModel()
             } else {
-                loadingStatus = "Storage permission needed for AI model access"
-                showFilePickerOption = true
+                loadingStatus = "Storage permission needed for model access, or can download directly"
+                showNetworkOptions = true
             }
         }
     }
@@ -223,7 +231,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     manageStoragePermissionLauncher.launch(intent)
                 } catch (e2: Exception) {
                     Log.e("MainActivity", "Could not open storage permission settings", e2)
-                    showFilePickerOption = true
+                    showNetworkOptions = true
                 }
             }
         }
@@ -242,9 +250,11 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
                     loadingStatus = "AI model ready for vision and audio assistance!"
                     isModelReady = true
                     showFilePickerOption = false
+                    showNetworkOptions = false
                 } else {
                     Log.e("MainActivity", "Failed to initialize AI model")
                     loadingStatus = "❌ Failed to initialize AI model"
+                    showNetworkOptions = true
                     showFilePickerOption = true
                 }
 
@@ -254,6 +264,7 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
             } catch (e: Exception) {
                 Log.e("MainActivity", "Error during model initialization", e)
                 loadingStatus = "❌ Error: ${e.message}"
+                showNetworkOptions = true
                 showFilePickerOption = true
             }
         }
@@ -286,11 +297,12 @@ class MainActivity : ComponentActivity(), TextToSpeech.OnInitListener {
 @Composable
 fun ModelLoadingScreen(
     loadingStatus: String,
-    modelStatus: String,
     showFilePickerOption: Boolean,
+    showNetworkOptions: Boolean,
     onRetry: () -> Unit,
     onFilePicker: () -> Unit,
-    onRequestStoragePermission: () -> Unit
+    onRequestStoragePermission: () -> Unit,
+    onDownloadModel: () -> Unit
 ) {
     Box(
         modifier = Modifier.fillMaxSize(),
@@ -300,7 +312,7 @@ fun ModelLoadingScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(24.dp)
         ) {
-            if (!loadingStatus.contains("❌") && !showFilePickerOption) {
+            if (!loadingStatus.contains("❌") && !showFilePickerOption && !showNetworkOptions) {
                 CircularProgressIndicator()
                 Spacer(modifier = Modifier.height(24.dp))
             }
@@ -326,33 +338,11 @@ fun ModelLoadingScreen(
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Text(
-                        text = "Model Status:",
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = modelStatus,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            if (showFilePickerOption) {
+            // Show note about model picker when model failed or not ready
+            if (loadingStatus.contains("❌") || showFilePickerOption || showNetworkOptions) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Card(
+                    modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.primaryContainer
                     )
@@ -361,9 +351,105 @@ fun ModelLoadingScreen(
                         modifier = Modifier.padding(16.dp)
                     ) {
                         Text(
-                            text = "📁 AI Model Import Options",
+                            text = "📝 Note",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "If the model failed to load or is not initialized, please use the model picker option below to choose your AI model file.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+            }
+
+            if (showNetworkOptions) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Text(
+                            text = "🌐 AI Model Setup Options",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Option 1: Auto-download
+                        Button(
+                            onClick = onDownloadModel,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Download Model Automatically")
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = "OR",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Option 2: Grant storage permission
+                        OutlinedButton(
+                            onClick = onRequestStoragePermission,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Grant Storage Permission")
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Text(
+                            text = "OR",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // Option 3: File picker
+                        OutlinedButton(
+                            onClick = onFilePicker,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Select Model File Manually")
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "The app will automatically download the multimodal AI model, or you can grant storage permission to check Downloads folder, or manually select the model file.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                }
+            } else if (showFilePickerOption) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp)
+                    ) {
+                        Text(
+                            text = "📁 AI Model Import Options",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
                         )
                         Spacer(modifier = Modifier.height(12.dp))
 
@@ -380,7 +466,7 @@ fun ModelLoadingScreen(
                         Text(
                             text = "OR",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
                             modifier = Modifier.align(Alignment.CenterHorizontally)
                         )
 
@@ -398,13 +484,13 @@ fun ModelLoadingScreen(
                         Text(
                             text = "Use file picker to select your multimodal AI model (.task file) from anywhere on your device",
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
                         )
                     }
                 }
             }
 
-            if (modelStatus.contains("❌") && !showFilePickerOption) {
+            if (!showFilePickerOption && !showNetworkOptions && loadingStatus.contains("❌")) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Card(
                     colors = CardDefaults.cardColors(
@@ -421,7 +507,8 @@ fun ModelLoadingScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = "1. Download your multimodal AI model file (.task format)\n" +
+                            text = "The app can automatically download the AI model, or you can:\n\n" +
+                                    "1. Download your multimodal AI model file (.task format)\n" +
                                     "2. Place it in your device's Downloads folder\n" +
                                     "3. Rename it to 'model_version.task'\n" +
                                     "4. Grant storage permission or use file picker\n\n" +
@@ -431,9 +518,7 @@ fun ModelLoadingScreen(
                         )
                     }
                 }
-            }
 
-            if (loadingStatus.contains("❌") && !showFilePickerOption) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(onClick = onRetry) {
                     Text("Retry")

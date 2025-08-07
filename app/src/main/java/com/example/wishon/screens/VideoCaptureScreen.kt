@@ -27,7 +27,7 @@ import kotlinx.coroutines.delay
 fun VideoCaptureScreen(
     tts: TextToSpeech?,
     userQuestion: String,
-    onNavigateToProcessing: (List<ExtractedFrame>) -> Unit
+    onNavigateToProcessing: (List<ExtractedFrame>, String) -> Unit // ← FIXED: Added userQuestion parameter
 ) {
     val context = LocalContext.current
     var captureStatus by remember { mutableStateOf("Preparing...") }
@@ -73,12 +73,12 @@ fun VideoCaptureScreen(
             try {
                 // Extract frames from the recorded video
                 val frames = VideoFrameExtractor.extractFrames(context, uri, 4)
-                onNavigateToProcessing(frames)
+                onNavigateToProcessing(frames, userQuestion) // ← FIXED: Pass both frames AND userQuestion
             } catch (e: Exception) {
                 // Handle extraction error - could navigate with empty frames or show error
                 captureStatus = "Error processing video"
                 delay(2000)
-                onNavigateToProcessing(emptyList())
+                onNavigateToProcessing(emptyList(), userQuestion) // ← FIXED: Pass userQuestion here too
             }
         }
     }

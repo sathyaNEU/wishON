@@ -405,6 +405,10 @@ Respond in: $language
                     )
                     .build()
 
+                Log.d(TAG, "=== GEMMA MODEL INPUT (Text Only - $language) ===")
+                Log.d(TAG, "Prompt: $basePrompt")
+                Log.d(TAG, "====================================")
+
                 currentLlm.use { llm ->
                     LlmInferenceSession.createFromOptions(llm, sessionOptions).use { session ->
                         // Add text prompt first (recommended for better results)

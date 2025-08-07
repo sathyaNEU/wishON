@@ -22,6 +22,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -33,7 +34,7 @@ import java.util.*
 fun VoiceInputScreen(
     assistanceType: AssistanceType,
     onNavigateToVideoCapture: (String) -> Unit,
-    onNavigateToAudioProcessing: (String) -> Unit // Changed from audio capture to processing
+    onNavigateToAudioProcessing: (String) -> Unit
 ) {
     val context = LocalContext.current
     var isListening by remember { mutableStateOf(false) }
@@ -41,6 +42,10 @@ fun VoiceInputScreen(
     var hasNavigated by remember { mutableStateOf(false) }
     var speechRecognizer by remember { mutableStateOf<SpeechRecognizer?>(null) }
     var showManualOption by remember { mutableStateOf(false) }
+    var backgroundAudioText by remember { mutableStateOf("") }
+
+    // ADDED: Track if we should navigate immediately when we get results
+    var shouldNavigateOnResults by remember { mutableStateOf(false) }
 
     // Function to completely stop and cleanup speech recognizer
     fun stopSpeechRecognizer() {
@@ -57,7 +62,7 @@ fun VoiceInputScreen(
         isListening = false
     }
 
-    // Function to navigate with the captured question
+    // Function to navigate with the captured question/audio
     fun navigateWithQuestion(question: String = "") {
         if (hasNavigated) return
         hasNavigated = true
@@ -65,14 +70,24 @@ fun VoiceInputScreen(
         stopSpeechRecognizer()
 
         when (assistanceType) {
-            AssistanceType.VISION -> onNavigateToVideoCapture(question)
-            AssistanceType.HEARING -> onNavigateToAudioProcessing(question) // Direct to processing
+            AssistanceType.VISION -> {
+                Log.d("VisionAssistance", "Navigating with question: '$question'")
+                onNavigateToVideoCapture(question) // Use the passed question parameter
+            }
+            AssistanceType.HEARING -> {
+                Log.d("HearingAssistance", "Navigating with captured audio: '$backgroundAudioText'")
+                Log.d("HearingAssistance", "Audio text length: ${backgroundAudioText.length} characters")
+                onNavigateToAudioProcessing(backgroundAudioText)
+            }
         }
     }
 
-    // Start continuous listening (same pattern as CustomerPreferenceScreen)
-    fun startContinuousListening() {
-        if (hasNavigated || !SpeechRecognizer.isRecognitionAvailable(context)) return
+    // Start continuous background recording
+    fun startBackgroundRecording() {
+        if (hasNavigated || !SpeechRecognizer.isRecognitionAvailable(context)) {
+            showManualOption = true
+            return
+        }
 
         if (ContextCompat.checkSelfPermission(
                 context,
@@ -91,9 +106,9 @@ fun VoiceInputScreen(
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true) // Force offline to avoid network issues
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3000)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000)
+            putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 8000)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 8000)
         }
 
         val recognitionListener = object : RecognitionListener {
@@ -101,26 +116,39 @@ fun VoiceInputScreen(
                 if (!hasNavigated) {
                     isListening = true
                     showManualOption = false
+                    if (assistanceType == AssistanceType.HEARING) {
+                        Log.d("HearingAssistance", "Started listening for background audio")
+                    }
                 }
             }
 
-            override fun onBeginningOfSpeech() {}
+            override fun onBeginningOfSpeech() {
+                if (assistanceType == AssistanceType.HEARING) {
+                    Log.d("HearingAssistance", "Beginning of speech detected")
+                }
+            }
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
 
             override fun onEndOfSpeech() {
-                if (!hasNavigated) {
+                if (assistanceType == AssistanceType.HEARING) {
+                    Log.d("HearingAssistance", "End of speech detected")
+                }
+
+                if (!hasNavigated && assistanceType == AssistanceType.HEARING) {
                     isListening = false
-                    // If we got some text, navigate with it
+                }
+                // FIXED: For vision, navigate immediately when speech ends if we have text
+                else if (!hasNavigated && assistanceType == AssistanceType.VISION) {
+                    isListening = false
                     if (recognizedText.isNotEmpty()) {
-                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                            navigateWithQuestion(recognizedText)
-                        }, 1000)
+                        // CHANGED: Navigate immediately with current recognized text
+                        navigateWithQuestion(recognizedText)
                     } else {
-                        // Restart listening if no text captured yet
+                        // Only restart if we don't have any text yet
                         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                             if (!hasNavigated) {
-                                startContinuousListening()
+                                startBackgroundRecording()
                             }
                         }, 1000)
                     }
@@ -132,6 +160,25 @@ fun VoiceInputScreen(
 
                 isListening = false
 
+                if (assistanceType == AssistanceType.HEARING) {
+                    val errorMessage = when (error) {
+                        SpeechRecognizer.ERROR_AUDIO -> "Audio recording error"
+                        SpeechRecognizer.ERROR_CLIENT -> "Client side error"
+                        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Insufficient permissions"
+                        SpeechRecognizer.ERROR_NETWORK -> "Network error"
+                        SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network timeout"
+                        SpeechRecognizer.ERROR_NO_MATCH -> "No speech matched"
+                        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "RecognitionService busy"
+                        SpeechRecognizer.ERROR_SERVER -> "Server error"
+                        SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech input"
+                        else -> "Unknown error ($error)"
+                    }
+                    Log.d("HearingAssistance", "Speech recognition error: $errorMessage")
+                    Log.d("HearingAssistance", "Current captured text: '$backgroundAudioText'")
+                    return
+                }
+
+                // For vision assistance, handle errors as before
                 when (error) {
                     SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> {
                         showManualOption = true
@@ -141,24 +188,21 @@ fun VoiceInputScreen(
                     SpeechRecognizer.ERROR_SERVER,
                     SpeechRecognizer.ERROR_NETWORK,
                     SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> {
-                        // Network/service errors - show manual option after a few tries
                         showManualOption = true
                         return
                     }
                     SpeechRecognizer.ERROR_NO_MATCH,
                     SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
-                        // No speech detected - continue trying or proceed
                         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                             if (!hasNavigated) {
-                                startContinuousListening()
+                                startBackgroundRecording()
                             }
                         }, 1500)
                     }
                     else -> {
-                        // Other errors - retry after delay
                         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                             if (!hasNavigated) {
-                                startContinuousListening()
+                                startBackgroundRecording()
                             }
                         }, 2000)
                     }
@@ -170,15 +214,29 @@ fun VoiceInputScreen(
 
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 if (matches != null && matches.isNotEmpty()) {
-                    recognizedText = matches[0]
+                    if (assistanceType == AssistanceType.HEARING) {
+                        backgroundAudioText = matches[0]
+                        Log.d("HearingAssistance", "Final recognized text: '${matches[0]}'")
+                        Log.d("HearingAssistance", "Final background text: '$backgroundAudioText'")
+                    } else {
+                        recognizedText = matches[0]
+                        Log.d("VisionAssistance", "Final recognized text for vision: '$recognizedText'")
+                        // CHANGED: Navigate immediately when we get final results
+                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                            if (!hasNavigated) {
+                                navigateWithQuestion(recognizedText)
+                            }
+                        }, 500) // Shorter delay
+                    }
+                } else {
+                    if (assistanceType == AssistanceType.HEARING) {
+                        Log.d("HearingAssistance", "No speech results captured in final results")
+                    } else {
+                        Log.d("VisionAssistance", "No speech results captured for vision")
+                    }
                 }
 
                 isListening = false
-
-                // Navigate with the recognized text after a brief delay
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    navigateWithQuestion(recognizedText)
-                }, 1500)
             }
 
             override fun onPartialResults(partialResults: Bundle?) {
@@ -186,7 +244,18 @@ fun VoiceInputScreen(
 
                 val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 if (matches != null && matches.isNotEmpty()) {
-                    recognizedText = matches[0]
+                    if (assistanceType == AssistanceType.HEARING) {
+                        backgroundAudioText = matches[0]
+                        Log.d("HearingAssistance", "Partial text captured: '${matches[0]}'")
+                    } else {
+                        recognizedText = matches[0]
+                        Log.d("VisionAssistance", "Partial text for vision: '$recognizedText'")
+
+                        // ADDED: If we get good partial results for vision, we can navigate early
+                        if (recognizedText.length > 10) { // If we have substantial text
+                            shouldNavigateOnResults = true
+                        }
+                    }
                 }
             }
 
@@ -199,13 +268,31 @@ fun VoiceInputScreen(
 
     // Start listening when screen loads
     LaunchedEffect(Unit) {
-        delay(500) // Brief delay to let screen settle
-        startContinuousListening()
+        delay(500)
 
-        // Timeout after 8 seconds - proceed with whatever we have
-        delay(8000)
-        if (!hasNavigated) {
-            navigateWithQuestion(recognizedText)
+        if (assistanceType == AssistanceType.HEARING) {
+            Log.d("HearingAssistance", "Initializing hearing assistance mode")
+            backgroundAudioText = ""
+        } else {
+            Log.d("VisionAssistance", "Initializing vision assistance mode")
+            recognizedText = ""
+        }
+
+        startBackgroundRecording()
+
+        if (assistanceType == AssistanceType.HEARING) {
+            delay(8000)
+            if (!hasNavigated) {
+                Log.d("HearingAssistance", "8-second timeout reached, proceeding with navigation")
+                navigateWithQuestion("")
+            }
+        } else {
+            // CHANGED: For vision, wait longer and ensure we navigate with current text
+            delay(8000)
+            if (!hasNavigated) {
+                Log.d("VisionAssistance", "8-second timeout reached, proceeding with question: '$recognizedText'")
+                navigateWithQuestion(recognizedText) // Make sure we pass current recognized text
+            }
         }
     }
 
@@ -223,6 +310,7 @@ fun VoiceInputScreen(
             .padding(32.dp)
             .semantics {
                 contentDescription = when {
+                    assistanceType == AssistanceType.HEARING && isListening -> "Recording background audio for hearing assistance"
                     showManualOption -> "Voice recognition unavailable, tap to proceed"
                     isListening -> "Listening for your ${assistanceType.name.lowercase()} question"
                     recognizedText.isNotEmpty() -> "Question captured: $recognizedText"
@@ -256,8 +344,8 @@ fun VoiceInputScreen(
             )
         }
 
-        if (showManualOption) {
-            // Show manual options when voice recognition fails
+        if (showManualOption && assistanceType == AssistanceType.VISION) {
+            // Show manual options only for vision when voice recognition fails
             Text(
                 text = "Voice Recognition Unavailable",
                 fontSize = 24.sp,
@@ -291,7 +379,10 @@ fun VoiceInputScreen(
                     )
 
                     Button(
-                        onClick = { navigateWithQuestion("") },
+                        onClick = {
+                            Log.d("VisionAssistance", "Manual continue without question selected")
+                            navigateWithQuestion("")
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(bottom = 8.dp)
@@ -302,7 +393,7 @@ fun VoiceInputScreen(
                     OutlinedButton(
                         onClick = {
                             showManualOption = false
-                            startContinuousListening()
+                            startBackgroundRecording()
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -312,72 +403,96 @@ fun VoiceInputScreen(
             }
 
         } else {
-            // Normal voice recognition interface
-            Text(
-                text = when {
-                    isListening -> "I'm listening!"
-                    recognizedText.isNotEmpty() -> "Got it!"
-                    else -> "Getting ready..."
-                },
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 16.dp),
-                color = when {
-                    isListening -> Color(0xFF4CAF50) // Green when listening
-                    recognizedText.isNotEmpty() -> Color(0xFF2196F3) // Blue when captured
-                    else -> MaterialTheme.colorScheme.onSurface
-                }
-            )
-
-            // Instruction text
-            if (isListening) {
-                val instructionText = when (assistanceType) {
-                    AssistanceType.VISION -> "Ask what you want to identify in the video"
-                    AssistanceType.HEARING -> "Describe what you want help with - like translating text, reading content, or getting audio descriptions"
-                }
+            // Normal interface
+            if (assistanceType == AssistanceType.HEARING) {
                 Text(
-                    text = instructionText,
+                    text = if (isListening) "Recording Background Audio..." else "Preparing to record...",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 16.dp),
+                    color = if (isListening) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurface
+                )
+
+                Text(
+                    text = "Step 2: Background Audio Recording",
                     fontSize = 16.sp,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                    modifier = Modifier.padding(bottom = 16.dp)
+                    modifier = Modifier.padding(bottom = 24.dp)
                 )
+
+                if (isListening) {
+                    Text(
+                        text = "Capturing all background sounds and speech for analysis...",
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(bottom = 24.dp)
+                    )
+                }
+
+            } else {
+                // Vision assistance: Show normal interface with captured text
+                Text(
+                    text = when {
+                        isListening -> "I'm listening!"
+                        recognizedText.isNotEmpty() -> "Got it!"
+                        else -> "Getting ready..."
+                    },
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(bottom = 16.dp),
+                    color = when {
+                        isListening -> Color(0xFF4CAF50)
+                        recognizedText.isNotEmpty() -> Color(0xFF2196F3)
+                        else -> MaterialTheme.colorScheme.onSurface
+                    }
+                )
+
+                if (isListening) {
+                    Text(
+                        text = "Ask what you want to identify in the video",
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+                }
+
+                // IMPORTANT: Show recognized text for vision - this should be visible!
+                if (recognizedText.isNotEmpty()) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer
+                        )
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(
+                                text = "Your Question:",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                            Text(
+                                text = "\"$recognizedText\"",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.padding(top = 4.dp),
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                            )
+                        }
+                    }
+                }
             }
 
-            // Show waveform animation while listening
+            // Show waveform animation while listening (for both types)
             if (isListening) {
                 WaveformAnimation(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(200.dp)
                 )
-            }
-
-            // Show recognized text
-            if (recognizedText.isNotEmpty()) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.secondaryContainer
-                    )
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(
-                            text = "Your Question:",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                        Text(
-                            text = if (recognizedText.isEmpty()) "No specific question" else "\"$recognizedText\"",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.padding(top = 4.dp),
-                            color = MaterialTheme.colorScheme.onSecondaryContainer
-                        )
-                    }
-                }
             }
 
             // Show listening indicator when active
@@ -393,7 +508,7 @@ fun VoiceInputScreen(
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
-                        text = "Listening...",
+                        text = if (assistanceType == AssistanceType.HEARING) "Recording..." else "Listening...",
                         fontSize = 14.sp,
                         color = Color.Green,
                         modifier = Modifier.padding(start = 4.dp)

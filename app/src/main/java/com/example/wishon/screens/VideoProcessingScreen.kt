@@ -7,6 +7,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.QuestionAnswer
+import androidx.compose.material.icons.filled.VideoFile
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,6 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.wishon.components.AudioWaveAnimation
@@ -36,7 +40,7 @@ fun VideoProcessingScreen(
     val context = LocalContext.current
     var showFrame by remember { mutableStateOf(false) }
     var isProcessing by remember { mutableStateOf(true) }
-    var processingStatus by remember { mutableStateOf("Preparing AI analysis...") }
+    var processingStatus by remember { mutableStateOf("Preparing video analysis...") }
     var hasNavigated by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -45,22 +49,33 @@ fun VideoProcessingScreen(
         // Show frame immediately
         showFrame = true
 
-        // Start background TTS for processing
+        // TTS announcement
+        val announcementText = when {
+            userQuestion.isNotEmpty() && frames.isNotEmpty() ->
+                "Processing your video assistance request: $userQuestion, with video frame analysis"
+            userQuestion.isNotEmpty() ->
+                "Processing your video assistance request: $userQuestion"
+            frames.isNotEmpty() ->
+                "Processing video frame for visual assistance"
+            else ->
+                "Processing general video assistance request"
+        }
+
         tts?.speak(
-            "Processing video frame to analyze your question",
+            announcementText,
             TextToSpeech.QUEUE_FLUSH,
             null,
-            "processing_announcement"
+            "video_processing_announcement"
         )
 
-        // Initialize Gemma LLM
-        processingStatus = "Loading AI model..."
+        // Initialize LLM
+        processingStatus = "Loading video assistance AI model..."
         delay(1000)
 
         val isLLMInitialized = try {
             GemmaLLMService.initializeLLM(context)
         } catch (e: Exception) {
-            android.util.Log.e("ProcessingScreen", "Error initializing LLM", e)
+            android.util.Log.e("VideoProcessingScreen", "Error initializing LLM", e)
             false
         }
 
@@ -80,14 +95,14 @@ fun VideoProcessingScreen(
         // Process with Gemma LLM
         val result = if (frames.isNotEmpty()) {
             try {
-                processingStatus = "Analyzing frame..."
-                delay(500)
+                processingStatus = "Analyzing video frame..."
+                delay(1000)
 
                 // Process single frame with real-time logging
-                GemmaLLMService.analyzeFrameWithUserQuestion(frames[0], userQuestion,selectedLanguage.llmLanguageName)
+                GemmaLLMService.analyzeFrameWithUserQuestion(frames[0], userQuestion, selectedLanguage.llmLanguageName)
 
             } catch (e: Exception) {
-                android.util.Log.e("ProcessingScreen", "Error during analysis", e)
+                android.util.Log.e("VideoProcessingScreen", "Error during analysis", e)
                 "Sorry, I encountered an error while analyzing the video: ${e.message ?: "Unknown error"}"
             }
         } else {
@@ -116,107 +131,304 @@ fun VideoProcessingScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .padding(20.dp)
             .semantics {
-                contentDescription = "Processing video frame for question: $userQuestion"
+                contentDescription = when {
+                    userQuestion.isNotEmpty() && frames.isNotEmpty() ->
+                        "Processing video assistance for question: $userQuestion, with video frame"
+                    userQuestion.isNotEmpty() ->
+                        "Processing video assistance for question: $userQuestion"
+                    frames.isNotEmpty() ->
+                        "Processing video frame for visual assistance"
+                    else ->
+                        "Processing general video assistance request"
+                }
             },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Top
     ) {
 
+        // Main Header
         Text(
-            text = "AI Analysis",
-            fontSize = 24.sp,
+            text = "wishON vision",
+            fontSize = 32.sp,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(vertical = 16.dp)
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(bottom = 8.dp)
         )
 
-        // Show user's question
-        if (userQuestion.isNotEmpty()) {
+        Text(
+            text = "AI-Powered Visual Assistance",
+            fontSize = 16.sp,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+            modifier = Modifier.padding(bottom = 24.dp)
+        )
+
+        // Question and Video Context Cards - Fixed Height Row Layout
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(120.dp), // Fixed height for both cards
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // User Question Card - Fixed size
             Card(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+                    .weight(1f)
+                    .fillMaxHeight(),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (userQuestion.isNotEmpty())
+                        MaterialTheme.colorScheme.primaryContainer
+                    else
+                        MaterialTheme.colorScheme.surfaceVariant
+                ),
+                shape = RoundedCornerShape(12.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
+                Column(
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.Top
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.QuestionAnswer,
+                            contentDescription = "Your question",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = "Your Question",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (userQuestion.isNotEmpty())
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            else
+                                MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
                     Text(
-                        text = "Your Question:",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                        text = if (userQuestion.isNotEmpty()) "\"$userQuestion\"" else "No specific question provided",
+                        fontSize = 13.sp,
+                        color = if (userQuestion.isNotEmpty())
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        lineHeight = 18.sp,
+                        maxLines = 4 // Increased to 4 lines for more text visibility
                     )
+                }
+            }
+
+            // Video Frame Card - Fixed size
+            Card(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .fillMaxHeight(),
+                    verticalArrangement = Arrangement.Top
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.VideoFile,
+                            contentDescription = "Video frame",
+                            tint = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Text(
+                            text = "Video Frame",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
                     Text(
-                        text = "\"$userQuestion\"",
-                        fontSize = 16.sp,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.padding(top = 4.dp)
+                        text = if (frames.isNotEmpty()) "Video frame captured and ready for analysis" else "No video frame available",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        lineHeight = 18.sp
                     )
                 }
             }
         }
 
-        if (showFrame && frames.isNotEmpty()) {
-            Text(
-                text = "Extracted Frame:",
-                fontSize = 18.sp,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
+        Spacer(modifier = Modifier.height(20.dp))
 
-            // Display single extracted frame
-            Row(
-                horizontalArrangement = Arrangement.Center,
-                modifier = Modifier.padding(bottom = 32.dp)
+        // Gemma AI Branding - Full Width
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            ),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                FramePreview(
-                    frame = frames[0],
-                    isProcessing = isProcessing
+                Text(
+                    text = "Powered by",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+
+                Text(
+                    text = "Gemma",
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(bottom = 2.dp)
+                )
+
+                Text(
+                    text = "3n",
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+
+                Text(
+                    text = "Advanced AI for visual accessibility and video understanding",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+                    textAlign = TextAlign.Center,
+                    lineHeight = 18.sp
                 )
             }
         }
 
-        if (frames.isEmpty()) {
-            Card(
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Coming Soon section - Smaller text, less padding
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (isProcessing)
+                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                else
+                    MaterialTheme.colorScheme.surfaceVariant
+            ),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Text(
+                text = "Video native (audio embedded) inference - coming soon!",
+                fontSize = 14.sp, // Reduced from 18.sp
+                fontWeight = FontWeight.Medium, // Reduced from Bold
+                color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 32.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
-            ) {
-                Text(
-                    text = "No frames were extracted from the video. This might be due to a video recording issue.",
-                    fontSize = 16.sp,
-                    color = MaterialTheme.colorScheme.onErrorContainer,
-                    modifier = Modifier.padding(16.dp)
-                )
-            }
+                    .padding(12.dp), // Reduced from 20.dp
+                textAlign = TextAlign.Center
+            )
         }
 
         if (isProcessing) {
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp)) // Reduced spacing
 
-            // Processing status
+            // Processing status - moved up
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                shape = RoundedCornerShape(12.dp)
             ) {
                 Text(
                     text = processingStatus,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Medium,
                     modifier = Modifier.padding(16.dp),
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    textAlign = TextAlign.Center
                 )
             }
 
-            // Audio wave animation during processing
+            Spacer(modifier = Modifier.height(16.dp)) // Reduced spacing
+
+            // Audio processing wave animation - now more prominent
             AudioWaveAnimation(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(80.dp)
+                    .height(100.dp)
+                    .padding(horizontal = 8.dp)
             )
         }
+
+        // Show video frame if available - positioned after processing animation
+        if (showFrame && frames.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Captured Frame",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+
+                    FramePreview(
+                        frame = frames[0],
+                        isProcessing = isProcessing
+                    )
+                }
+            }
+        }
+
+        if (frames.isEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    text = "No frames were extracted from the video. This might be due to a video recording issue.",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier.padding(16.dp),
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        // Footer with privacy message
+        Text(
+            text = "🔒 All processing happens locally on your device",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(8.dp)
+        )
     }
 }
 
@@ -237,7 +449,7 @@ fun FramePreview(
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
-            .width(200.dp)
+            .width(180.dp)
             .semantics {
                 contentDescription = "Video frame at ${frame.timestampMs}ms" +
                         if (isProcessing) " - Being analyzed by AI" else ""
@@ -246,70 +458,45 @@ fun FramePreview(
         // Display frame with highlight if currently processing
         Card(
             modifier = Modifier
-                .size(180.dp)
+                .size(160.dp)
                 .border(
                     width = if (isProcessing) 3.dp else 2.dp,
-                    color = if (isProcessing) Color.Green else MaterialTheme.colorScheme.primary,
+                    color = if (isProcessing) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
                     shape = RoundedCornerShape(8.dp)
                 ),
             shape = RoundedCornerShape(8.dp)
         ) {
-            Box {
-                if (isBitmapValid) {
-                    Image(
-                        bitmap = frame.bitmap.asImageBitmap(),
-                        contentDescription = "Extracted video frame",
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
+            if (isBitmapValid) {
+                Image(
+                    bitmap = frame.bitmap.asImageBitmap(),
+                    contentDescription = "Extracted video frame",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                // Fallback if bitmap is invalid
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Frame\nUnavailable",
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
                     )
-                } else {
-                    // Fallback if bitmap is invalid
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.surfaceVariant),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Frame\nUnavailable",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-
-                // Processing overlay
-                if (isProcessing) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color.Green.copy(alpha = 0.3f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "AI\nAnalyzing",
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
-                        )
-                    }
                 }
             }
         }
 
         Text(
-            text = "Video Frame",
-            fontSize = 14.sp,
-            fontWeight = if (isProcessing) FontWeight.Bold else FontWeight.Normal,
-            color = if (isProcessing) Color.Green else Color.Unspecified,
-            modifier = Modifier.padding(top = 8.dp)
-        )
-
-        Text(
-            text = "${frame.timestampMs}ms",
+            text = "Frame: ${frame.timestampMs}ms",
             fontSize = 12.sp,
-            color = Color.Gray,
-            modifier = Modifier.padding(top = 4.dp)
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+            modifier = Modifier.padding(top = 8.dp),
+            textAlign = TextAlign.Center
         )
     }
 }

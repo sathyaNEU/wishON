@@ -20,8 +20,12 @@ fun VoiceFirstApp(tts: TextToSpeech?) {
     // Shared state holders
     var extractedFrames: List<ExtractedFrame> by remember { mutableStateOf(emptyList()) }
     var userQuestion: String by remember { mutableStateOf("") }
+    var backgroundAudioText: String by remember { mutableStateOf("") }
     var assistanceType: AssistanceType by remember { mutableStateOf(AssistanceType.VISION) }
     var selectedLanguage: SupportedLanguage by remember { mutableStateOf(SupportedLanguage.ENGLISH) }
+
+    // ADDED: Store the result in state instead of URL parameter
+    var analysisResult: String by remember { mutableStateOf("") }
 
     NavHost(
         navController = navController,
@@ -42,6 +46,21 @@ fun VoiceFirstApp(tts: TextToSpeech?) {
                 tts = tts,
                 onLanguageSelected = { language ->
                     selectedLanguage = language
+                    // Navigate based on assistance type
+                    when (assistanceType) {
+                        AssistanceType.VISION -> navController.navigate("voice_input")
+                        AssistanceType.HEARING -> navController.navigate("user_question_input")
+                    }
+                }
+            )
+        }
+
+        // For HEARING support: First collect user question
+        composable("user_question_input") {
+            UserQuestionInputScreen(
+                tts = tts,
+                onNavigateToBackgroundRecording = { question ->
+                    userQuestion = question
                     navController.navigate("voice_input")
                 }
             )
@@ -51,11 +70,17 @@ fun VoiceFirstApp(tts: TextToSpeech?) {
             VoiceInputScreen(
                 assistanceType = assistanceType,
                 onNavigateToVideoCapture = { question ->
-                    userQuestion = question
+                    // For VISION: question is the user question
+                    if (assistanceType == AssistanceType.VISION) {
+                        userQuestion = question
+                        android.util.Log.d("VoiceFirstApp", "Vision: Captured question: '$question'")
+                    }
                     navController.navigate("video_capture")
                 },
-                onNavigateToAudioProcessing = { question ->
-                    userQuestion = question
+                onNavigateToAudioProcessing = { capturedBackgroundAudio ->
+                    // Store the background audio text properly
+                    backgroundAudioText = capturedBackgroundAudio
+                    android.util.Log.d("VoiceFirstApp", "Hearing: Captured background audio: '$capturedBackgroundAudio'")
                     navController.navigate("audio_processing")
                 }
             )
@@ -65,8 +90,10 @@ fun VoiceFirstApp(tts: TextToSpeech?) {
             VideoCaptureScreen(
                 tts = tts,
                 userQuestion = userQuestion,
-                onNavigateToProcessing = { frames ->
+                onNavigateToProcessing = { frames, question ->
                     extractedFrames = frames
+                    userQuestion = question
+                    android.util.Log.d("VoiceFirstApp", "Video capture complete. Question: '$question', Frames: ${frames.size}")
                     navController.navigate("processing")
                 }
             )
@@ -76,10 +103,16 @@ fun VoiceFirstApp(tts: TextToSpeech?) {
             VideoProcessingScreen(
                 frames = extractedFrames,
                 userQuestion = userQuestion,
-                selectedLanguage = selectedLanguage, // Pass language to processing
+                selectedLanguage = selectedLanguage,
                 tts = tts,
                 onNavigateToResult = { result ->
-                    navController.navigate("result/$result")
+                    // FIXED: Store result in state instead of URL parameter
+                    analysisResult = result
+                    android.util.Log.d("VoiceFirstApp", "Processing complete. Result length: ${result.length}")
+                    android.util.Log.d("VoiceFirstApp", "Result preview: ${result.take(100)}...")
+
+                    // Navigate without passing result as URL parameter
+                    navController.navigate("result")
                 }
             )
         }
@@ -87,27 +120,37 @@ fun VoiceFirstApp(tts: TextToSpeech?) {
         composable("audio_processing") {
             AudioProcessingScreen(
                 userQuestion = userQuestion,
-                selectedLanguage = selectedLanguage, // Pass language to processing
+                backgroundAudioText = backgroundAudioText,
+                selectedLanguage = selectedLanguage,
                 tts = tts,
                 onNavigateToResult = { result ->
-                    navController.navigate("result/$result")
+                    // FIXED: Store result in state instead of URL parameter
+                    analysisResult = result
+                    android.util.Log.d("VoiceFirstApp", "Audio processing complete. Result length: ${result.length}")
+                    android.util.Log.d("VoiceFirstApp", "Result preview: ${result.take(100)}...")
+
+                    // Navigate without passing result as URL parameter
+                    navController.navigate("result")
                 }
             )
         }
 
-        composable("result/{result}") { backStackEntry ->
-            val result = backStackEntry.arguments?.getString("result") ?: "Sorry, I couldn't analyze the content."
+        // FIXED: Simple route without parameter
+        composable("result") {
             ResultScreen(
-                result = result,
-                selectedLanguage = selectedLanguage, // Pass language to result screen
-                assistanceType = assistanceType, // Pass assistance type to result screen
+                result = analysisResult, // Use state variable instead of URL parameter
+                selectedLanguage = selectedLanguage,
+                assistanceType = assistanceType,
                 tts = tts,
                 onNavigateToHome = {
                     // Reset state when going back to customer preference screen
                     extractedFrames = emptyList()
                     userQuestion = ""
+                    backgroundAudioText = ""
+                    analysisResult = "" // RESET RESULT TOO
                     assistanceType = AssistanceType.VISION
                     selectedLanguage = SupportedLanguage.ENGLISH
+                    android.util.Log.d("VoiceFirstApp", "State reset, navigating to home")
                     navController.navigate("customer_preference") {
                         popUpTo("customer_preference") { inclusive = true }
                     }
